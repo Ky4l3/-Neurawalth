@@ -12,6 +12,7 @@
 Icon?
 **/Pods/
 **/.symlinks/
+vendor/
 profile
 xcuserdata
 **/.generated/

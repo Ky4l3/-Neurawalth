@@ -1,0 +1,5 @@
+app_identifier("io.neurawealth.app")
+apple_id(ENV["APPLE_ID"]) # Your Apple ID email
+team_id("8G6PVM3239")
+
+

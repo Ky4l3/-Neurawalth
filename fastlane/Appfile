@@ -1,0 +1,6 @@
+app_identifier("io.neurawealth.app")
+apple_id(ENV["APPLE_ID"]) # your Apple ID email
+itc_team_id(ENV["APPSTORE_TEAM_ID"]) # App Store Connect Team ID
+team_id("8G6PVM3239")
+
+

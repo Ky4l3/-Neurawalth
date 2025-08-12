@@ -7,6 +7,9 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Ruby bundler (for Fastlane if used later)
+        run: |
+          gem install bundler fastlane --no-document || true
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:

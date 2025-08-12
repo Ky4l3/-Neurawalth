@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+echo "Running Flutter analyzer and tests..."
+flutter analyze
+if [ -d test ] && ls test/*.dart >/dev/null 2>&1; then
+  flutter test
+else
+  echo "No tests found. Skipping flutter test."
+fi
+

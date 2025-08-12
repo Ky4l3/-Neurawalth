@@ -1,0 +1,25 @@
+name: macos-flutter-ci
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: stable
+      - name: Flutter doctor
+        run: flutter doctor -v
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Run tests
+        run: flutter test --coverage
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign
+
+

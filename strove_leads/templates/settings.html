@@ -1,0 +1,272 @@
+{% extends 'base.html' %}
+{% block title %}Settings — Strove{% endblock %}
+{% block page_title %}Settings{% endblock %}
+
+{% block content %}
+<form id="settings-form" onsubmit="saveSettings(event)">
+
+  <!-- Schedule -->
+  <div class="settings-section">
+    <div class="settings-title">Schedule</div>
+    <div class="card">
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Daily Scrape Time</div>
+          <div class="setting-desc">UTC time to automatically run the full scrape each day</div>
+        </div>
+        <div class="setting-control" style="display:flex;gap:8px;align-items:center">
+          <select class="form-control" id="set-hour" style="width:80px">
+            {% for h in range(24) %}
+            <option value="{{ h }}">{{ "%02d"|format(h) }}</option>
+            {% endfor %}
+          </select>
+          <span style="color:var(--text-muted)">:</span>
+          <select class="form-control" id="set-minute" style="width:80px">
+            <option value="0">00</option>
+            <option value="15">15</option>
+            <option value="30">30</option>
+            <option value="45">45</option>
+          </select>
+          <span style="font-size:12px;color:var(--text-muted)">UTC</span>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Enabled Sources</div>
+          <div class="setting-desc">Select which sources to include in each scrape run</div>
+        </div>
+        <div class="setting-control">
+          <div style="display:flex;flex-wrap:wrap;gap:8px" id="source-toggles">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- API Keys -->
+  <div class="settings-section">
+    <div class="settings-title">API Keys</div>
+    <div class="card">
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">SerpAPI Key</div>
+          <div class="setting-desc">For reliable Google search results — <a href="https://serpapi.com" target="_blank" class="td-link">serpapi.com</a></div>
+        </div>
+        <div class="setting-control">
+          <div style="display:flex;gap:8px">
+            <input type="password" class="form-control" id="serp-api-key" placeholder="sk-••••••••">
+            <button type="button" class="btn btn-outline btn-sm" onclick="saveApiKey('serp_api_key', 'serp-api-key')">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Hunter.io API Key</div>
+          <div class="setting-desc">For finding emails from LinkedIn profiles — <a href="https://hunter.io" target="_blank" class="td-link">hunter.io</a></div>
+        </div>
+        <div class="setting-control">
+          <div style="display:flex;gap:8px">
+            <input type="password" class="form-control" id="hunter-api-key" placeholder="••••••••••••••••">
+            <button type="button" class="btn btn-outline btn-sm" onclick="saveApiKey('hunter_api_key', 'hunter-api-key')">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Snov.io API Key</div>
+          <div class="setting-desc">Alternative email finder — <a href="https://snov.io" target="_blank" class="td-link">snov.io</a></div>
+        </div>
+        <div class="setting-control">
+          <div style="display:flex;gap:8px">
+            <input type="password" class="form-control" id="snov-api-key" placeholder="••••••••••••••••">
+            <button type="button" class="btn btn-outline btn-sm" onclick="saveApiKey('snov_api_key', 'snov-api-key')">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search Queries -->
+  <div class="settings-section">
+    <div class="settings-title">Search Queries</div>
+    <div class="card">
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">
+        Google/DuckDuckGo search queries used to find coaching profiles
+      </p>
+      <div class="tag-list" id="queries-list"></div>
+      <div class="tag-input-row">
+        <input type="text" class="form-control" id="new-query" placeholder='"business coach" site:instagram.com'>
+        <button type="button" class="btn btn-outline btn-sm" onclick="addQuery()">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Target Countries -->
+  <div class="settings-section">
+    <div class="settings-title">Target Countries</div>
+    <div class="card">
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">
+        Only save leads from these countries (ISO codes)
+      </p>
+      <div class="tag-list" id="countries-list"></div>
+      <div class="tag-input-row">
+        <input type="text" class="form-control" id="new-country" placeholder="US, UK, CA, AU..." style="max-width:140px">
+        <button type="button" class="btn btn-outline btn-sm" onclick="addCountry()">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px">
+    <button type="submit" class="btn btn-primary">Save All Settings</button>
+    <button type="button" class="btn btn-outline" onclick="loadSettings()">Discard Changes</button>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _queries = [];
+let _countries = [];
+let _enabledSources = ['google', 'directories', 'linkedin', 'instagram'];
+
+const SOURCES = [
+  { id: 'google', label: 'Google' },
+  { id: 'directories', label: 'Directories' },
+  { id: 'linkedin', label: 'LinkedIn' },
+  { id: 'instagram', label: 'Instagram' },
+];
+
+async function loadSettings() {
+  try {
+    const data = await apiFetch('/api/settings/');
+
+    if (data.scrape_hour !== undefined) $('set-hour').value = data.scrape_hour;
+    if (data.scrape_minute !== undefined) $('set-minute').value = data.scrape_minute;
+
+    _enabledSources = Array.isArray(data.enabled_sources) ? data.enabled_sources : ['google', 'directories', 'linkedin', 'instagram'];
+    _queries = Array.isArray(data.custom_queries) ? data.custom_queries : [];
+    _countries = Array.isArray(data.target_countries) ? data.target_countries : ['US', 'UK', 'CA', 'AU'];
+
+    renderSourceToggles();
+    renderQueries();
+    renderCountries();
+  } catch(e) {
+    showToast('Failed to load settings: ' + e.message, 'error');
+  }
+}
+
+function renderSourceToggles() {
+  const el = $('source-toggles');
+  el.innerHTML = SOURCES.map(s => `
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
+      <label class="toggle">
+        <input type="checkbox" id="src-${s.id}" ${_enabledSources.includes(s.id) ? 'checked' : ''} onchange="toggleSource('${s.id}', this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+      <span style="font-size:13px;color:var(--text-secondary)">${s.label}</span>
+    </label>
+  `).join('');
+}
+
+function toggleSource(id, enabled) {
+  if (enabled && !_enabledSources.includes(id)) _enabledSources.push(id);
+  else if (!enabled) _enabledSources = _enabledSources.filter(s => s !== id);
+}
+
+function renderQueries() {
+  const el = $('queries-list');
+  el.innerHTML = _queries.map((q, i) => `
+    <span class="tag">
+      ${escapeHtml(q)}
+      <button class="tag-remove" type="button" onclick="removeQuery(${i})" title="Remove">×</button>
+    </span>
+  `).join('');
+}
+
+function renderCountries() {
+  const el = $('countries-list');
+  el.innerHTML = _countries.map((c, i) => `
+    <span class="tag">
+      ${escapeHtml(c)}
+      <button class="tag-remove" type="button" onclick="removeCountry(${i})" title="Remove">×</button>
+    </span>
+  `).join('');
+}
+
+function addQuery() {
+  const input = $('new-query');
+  const val = input.value.trim();
+  if (!val) return;
+  if (!_queries.includes(val)) {
+    _queries.push(val);
+    renderQueries();
+  }
+  input.value = '';
+}
+
+function removeQuery(i) {
+  _queries.splice(i, 1);
+  renderQueries();
+}
+
+function addCountry() {
+  const input = $('new-country');
+  const val = input.value.trim().toUpperCase();
+  if (!val || val.length > 3) return;
+  if (!_countries.includes(val)) {
+    _countries.push(val);
+    renderCountries();
+  }
+  input.value = '';
+}
+
+function removeCountry(i) {
+  _countries.splice(i, 1);
+  renderCountries();
+}
+
+async function saveApiKey(keyName, inputId) {
+  const value = $(inputId).value.trim();
+  if (!value) { showToast('Enter a key first', 'info'); return; }
+  try {
+    await apiFetch('/api/settings/api-key', {
+      method: 'POST',
+      body: JSON.stringify({ key: keyName, value }),
+    });
+    $(inputId).value = '';
+    showToast('API key saved', 'success');
+  } catch(e) {
+    showToast('Failed to save: ' + e.message, 'error');
+  }
+}
+
+async function saveSettings(e) {
+  e.preventDefault();
+  try {
+    await apiFetch('/api/settings/', {
+      method: 'POST',
+      body: JSON.stringify({
+        scrape_hour: $('set-hour').value,
+        scrape_minute: $('set-minute').value,
+        enabled_sources: _enabledSources,
+        custom_queries: _queries,
+        target_countries: _countries,
+      }),
+    });
+    showToast('Settings saved', 'success');
+  } catch(e) {
+    showToast('Failed to save settings: ' + e.message, 'error');
+  }
+}
+
+// Enter key for tag inputs
+$('new-query').addEventListener('keypress', e => { if (e.key === 'Enter') { e.preventDefault(); addQuery(); }});
+$('new-country').addEventListener('keypress', e => { if (e.key === 'Enter') { e.preventDefault(); addCountry(); }});
+
+document.addEventListener('DOMContentLoaded', loadSettings);
+</script>
+{% endblock %}

@@ -1,0 +1,164 @@
+{% extends 'base.html' %}
+{% block title %}Export — Strove{% endblock %}
+{% block page_title %}Export{% endblock %}
+
+{% block content %}
+<p style="color:var(--text-secondary);margin-bottom:28px;font-size:14px">
+  Export your leads in multiple formats for Apollo, HubSpot, or raw CSV import.
+</p>
+
+<!-- Export Cards -->
+<div class="export-grid" style="margin-bottom:32px">
+  <!-- Standard CSV -->
+  <div class="export-card">
+    <div class="export-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+    </div>
+    <div class="export-title">Standard CSV</div>
+    <div class="export-desc">Full lead data — all fields, all sources, ready for any CRM or spreadsheet</div>
+    <button class="btn btn-primary btn-sm" onclick="exportLeads('csv')">Download CSV</button>
+  </div>
+
+  <!-- Apollo -->
+  <div class="export-card">
+    <div class="export-icon" style="background:rgba(60,40,20,0.3);border-color:rgba(100,60,30,0.4);color:#d4784a">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+    </div>
+    <div class="export-title">Apollo Import</div>
+    <div class="export-desc">Formatted for Apollo.io — correct column names for direct people import</div>
+    <button class="btn btn-outline btn-sm" onclick="exportLeads('apollo')">Download for Apollo</button>
+  </div>
+
+  <!-- HubSpot -->
+  <div class="export-card">
+    <div class="export-icon" style="background:rgba(60,20,20,0.3);border-color:rgba(100,30,30,0.4);color:#d46a4a">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+    </div>
+    <div class="export-title">HubSpot Import</div>
+    <div class="export-desc">Formatted for HubSpot Contacts — includes lead source and custom fields</div>
+    <button class="btn btn-outline btn-sm" onclick="exportLeads('hubspot')">Download for HubSpot</button>
+  </div>
+</div>
+
+<!-- Filtered Export -->
+<div class="card" style="margin-bottom:28px">
+  <div class="card-title">Filtered Export</div>
+  <p style="font-size:13px;color:var(--text-secondary);margin-bottom:20px">Export only leads matching specific criteria</p>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:20px">
+    <div class="form-group" style="margin:0">
+      <label class="form-label">Status</label>
+      <select class="form-control" id="exp-status">
+        <option value="">All Statuses</option>
+        <option>New</option>
+        <option>Contacted</option>
+        <option>Replied</option>
+        <option>Call Booked</option>
+        <option>Closed</option>
+        <option>Not Qualified</option>
+      </select>
+    </div>
+
+    <div class="form-group" style="margin:0">
+      <label class="form-label">Source</label>
+      <select class="form-control" id="exp-source">
+        <option value="">All Sources</option>
+        <option value="instagram">Instagram</option>
+        <option value="linkedin">LinkedIn</option>
+        <option value="google_instagram">Google/Instagram</option>
+        <option value="noomii">Noomii</option>
+        <option value="bark">Bark</option>
+      </select>
+    </div>
+
+    <div class="form-group" style="margin:0">
+      <label class="form-label">Country</label>
+      <select class="form-control" id="exp-country">
+        <option value="">All Countries</option>
+        <option>US</option>
+        <option>UK</option>
+        <option>CA</option>
+        <option>AU</option>
+      </select>
+    </div>
+
+    <div class="form-group" style="margin:0">
+      <label class="form-label">Format</label>
+      <select class="form-control" id="exp-format">
+        <option value="csv">Standard CSV</option>
+        <option value="apollo">Apollo</option>
+        <option value="hubspot">HubSpot</option>
+      </select>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <button class="btn btn-primary" onclick="exportFiltered()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export Filtered
+    </button>
+    <span id="export-count" style="font-size:13px;color:var(--text-muted)"></span>
+  </div>
+</div>
+
+<!-- Stats Summary -->
+<div class="card">
+  <div class="card-title">Export Summary</div>
+  <div id="export-stats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:16px;margin-top:8px">
+    <div style="color:var(--text-muted);font-size:13px">Loading...</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function buildExportUrl(format, filters = {}) {
+  const params = new URLSearchParams({ format });
+  if (filters.status) params.set('status', filters.status);
+  if (filters.source) params.set('source', filters.source);
+  if (filters.country) params.set('country', filters.country);
+  return '/api/leads/export?' + params;
+}
+
+function exportLeads(format) {
+  window.location.href = buildExportUrl(format);
+  showToast('Preparing download...', 'info', 2000);
+}
+
+function exportFiltered() {
+  const filters = {
+    status: $('exp-status').value,
+    source: $('exp-source').value,
+    country: $('exp-country').value,
+  };
+  const format = $('exp-format').value;
+  window.location.href = buildExportUrl(format, filters);
+  showToast('Preparing filtered export...', 'info', 2000);
+}
+
+async function loadExportStats() {
+  try {
+    const data = await apiFetch('/api/leads/stats');
+    const el = $('export-stats');
+
+    const items = [
+      ['Total Leads', data.total_leads || 0],
+      ['New Leads', (data.by_status || {})['New'] || 0],
+      ['Contacted', (data.by_status || {})['Contacted'] || 0],
+      ['With Email', '—'],
+      ['US Leads', (data.by_country || {})['US'] || 0],
+      ['UK Leads', (data.by_country || {})['UK'] || 0],
+    ];
+
+    el.innerHTML = items.map(([label, value]) => `
+      <div>
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">${escapeHtml(label)}</div>
+        <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:500;color:var(--text-primary)">${typeof value === 'number' ? value.toLocaleString() : value}</div>
+      </div>
+    `).join('');
+  } catch(e) {}
+}
+
+document.addEventListener('DOMContentLoaded', loadExportStats);
+</script>
+{% endblock %}

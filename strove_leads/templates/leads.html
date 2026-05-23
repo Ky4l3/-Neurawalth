@@ -1,0 +1,414 @@
+{% extends 'base.html' %}
+{% block title %}Leads — Strove{% endblock %}
+{% block page_title %}Leads{% endblock %}
+
+{% block content %}
+<!-- Filters Bar -->
+<div class="filters-bar">
+  <input type="text" class="form-control search-input" id="search-input" placeholder="Search name, email, bio..." oninput="debounceSearch()">
+
+  <select class="form-control" id="filter-status" onchange="loadLeads()">
+    <option value="">All Statuses</option>
+    <option>New</option>
+    <option>Contacted</option>
+    <option>Replied</option>
+    <option>Call Booked</option>
+    <option>Closed</option>
+    <option>Not Qualified</option>
+  </select>
+
+  <select class="form-control" id="filter-source" onchange="loadLeads()">
+    <option value="">All Sources</option>
+    <option value="google_instagram">Google/Instagram</option>
+    <option value="google_linkedin">Google/LinkedIn</option>
+    <option value="instagram">Instagram</option>
+    <option value="linkedin">LinkedIn</option>
+    <option value="noomii">Noomii</option>
+    <option value="coachme">Coach.me</option>
+    <option value="bark">Bark</option>
+    <option value="thecoachingdirectory">Directory</option>
+  </select>
+
+  <select class="form-control" id="filter-country" onchange="loadLeads()">
+    <option value="">All Countries</option>
+    <option>US</option>
+    <option>UK</option>
+    <option>CA</option>
+    <option>AU</option>
+  </select>
+
+  <select class="form-control" id="filter-niche" onchange="loadLeads()">
+    <option value="">All Niches</option>
+    <option>Business Coach</option>
+    <option>Life Coach</option>
+    <option>Executive Coach</option>
+    <option>Mindset Coach</option>
+    <option>Health Coach</option>
+    <option>Leadership Coach</option>
+    <option>Career Coach</option>
+    <option>Sales Coach</option>
+  </select>
+
+  <button class="btn btn-outline btn-sm" onclick="clearFilters()">Clear</button>
+</div>
+
+<!-- Bulk Actions Bar (hidden until selection) -->
+<div id="bulk-bar" style="display:none;align-items:center;gap:10px;margin-bottom:12px;padding:10px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);flex-wrap:wrap">
+  <span id="selected-count" style="font-size:13px;color:var(--text-secondary)">0 selected</span>
+  <select class="form-control" id="bulk-status-select" style="width:160px">
+    <option value="">Set status...</option>
+    <option>Contacted</option>
+    <option>Not Qualified</option>
+    <option>Closed</option>
+    <option>New</option>
+  </select>
+  <button class="btn btn-outline btn-sm" onclick="applyBulkStatus()">Apply</button>
+  <a id="bulk-export-btn" href="#" class="btn btn-outline btn-sm" onclick="exportSelected(event)">Export Selected</a>
+  <button class="btn btn-outline btn-sm" onclick="clearSelection()">Deselect All</button>
+</div>
+
+<!-- Table -->
+<div class="table-container" id="leads-table-container">
+  <table id="leads-table">
+    <thead>
+      <tr>
+        <th class="checkbox-cell"><input type="checkbox" id="select-all" onchange="toggleSelectAll(this.checked)"></th>
+        <th onclick="sortBy('name')">Name <span class="sort-arrow" data-col="name"></span></th>
+        <th onclick="sortBy('niche')">Niche <span class="sort-arrow" data-col="niche"></span></th>
+        <th onclick="sortBy('source')">Source <span class="sort-arrow" data-col="source"></span></th>
+        <th onclick="sortBy('country')">Country <span class="sort-arrow" data-col="country"></span></th>
+        <th>Contact</th>
+        <th onclick="sortBy('qualification_score')">Score <span class="sort-arrow" data-col="qualification_score"></span></th>
+        <th onclick="sortBy('status')">Status <span class="sort-arrow" data-col="status"></span></th>
+        <th onclick="sortBy('created_at')">Found <span class="sort-arrow" data-col="created_at"></span></th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="leads-tbody">
+      <tr><td colspan="10" class="empty-state"><div class="spinner" style="margin:20px auto"></div></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="pagination" id="pagination"></div>
+
+<!-- Lead Detail Modal -->
+<div id="lead-modal" class="modal-backdrop" style="display:none" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modal-name">Lead Details</h2>
+      <button class="modal-close" onclick="$('lead-modal').style.display='none'">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="lead-detail-grid" id="modal-grid"></div>
+      <div class="form-group" style="margin-top:16px">
+        <label class="form-label">Notes</label>
+        <textarea class="form-control" id="modal-notes" rows="3" placeholder="Add notes..."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select class="form-control" id="modal-status">
+          <option>New</option>
+          <option>Contacted</option>
+          <option>Replied</option>
+          <option>Call Booked</option>
+          <option>Closed</option>
+          <option>Not Qualified</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="$('lead-modal').style.display='none'">Cancel</button>
+      <button class="btn btn-primary" onclick="saveLeadChanges()">Save Changes</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _currentPage = 1;
+let _sortBy = 'created_at';
+let _sortDir = 'desc';
+let _selectedIds = new Set();
+let _searchTimer = null;
+let _editingLeadId = null;
+
+function debounceSearch() {
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(loadLeads, 400);
+}
+
+function clearFilters() {
+  $('search-input').value = '';
+  $('filter-status').value = '';
+  $('filter-source').value = '';
+  $('filter-country').value = '';
+  $('filter-niche').value = '';
+  _currentPage = 1;
+  loadLeads();
+}
+
+function sortBy(col) {
+  if (_sortBy === col) {
+    _sortDir = _sortDir === 'desc' ? 'asc' : 'desc';
+  } else {
+    _sortBy = col;
+    _sortDir = 'desc';
+  }
+  $$('.sort-arrow').forEach(el => el.textContent = '');
+  const arrow = document.querySelector(`.sort-arrow[data-col="${col}"]`);
+  if (arrow) arrow.textContent = _sortDir === 'desc' ? ' ↓' : ' ↑';
+  loadLeads();
+}
+
+async function loadLeads() {
+  const params = new URLSearchParams({
+    page: _currentPage,
+    per_page: 50,
+    sort_by: _sortBy,
+    sort_dir: _sortDir,
+  });
+
+  const search = $('search-input')?.value;
+  const status = $('filter-status')?.value;
+  const source = $('filter-source')?.value;
+  const country = $('filter-country')?.value;
+  const niche = $('filter-niche')?.value;
+
+  if (search) params.set('search', search);
+  if (status) params.set('status', status);
+  if (source) params.set('source', source);
+  if (country) params.set('country', country);
+  if (niche) params.set('niche', niche);
+
+  try {
+    const data = await apiFetch('/api/leads/?' + params);
+    renderLeads(data.leads);
+    renderPagination(data.page, data.pages, data.total);
+  } catch (e) {
+    showToast('Failed to load leads: ' + e.message, 'error');
+  }
+}
+
+window.loadLeads = loadLeads;
+
+function renderLeads(leads) {
+  const tbody = $('leads-tbody');
+  if (!leads.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="10">
+          <div class="empty-state">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            <h3>No leads found</h3>
+            <p>Run a scrape or adjust your filters</p>
+          </div>
+        </td>
+      </tr>`;
+    return;
+  }
+
+  tbody.innerHTML = leads.map(lead => {
+    const contactInfo = [
+      lead.email ? `<a href="mailto:${escapeHtml(lead.email)}" class="td-link" title="${escapeHtml(lead.email)}">${escapeHtml(lead.email.split('@')[0]+'@…')}</a>` : '',
+      lead.instagram_handle ? `<a href="https://instagram.com/${escapeHtml(lead.instagram_handle)}" target="_blank" class="td-link" title="@${escapeHtml(lead.instagram_handle)}">@${escapeHtml(lead.instagram_handle.substring(0,12))}</a>` : '',
+      lead.linkedin_url ? `<a href="${escapeHtml(lead.linkedin_url)}" target="_blank" class="td-link">LinkedIn</a>` : '',
+    ].filter(Boolean).join('<br>');
+
+    return `
+      <tr>
+        <td class="checkbox-cell">
+          <input type="checkbox" value="${lead.id}" ${_selectedIds.has(lead.id) ? 'checked' : ''} onchange="toggleSelect(${lead.id}, this.checked)">
+        </td>
+        <td class="td-primary" style="cursor:pointer;max-width:160px" onclick="openLead(${lead.id})" title="${escapeHtml(lead.name)}">
+          ${escapeHtml((lead.name || 'Unknown').substring(0, 24))}${(lead.name||'').length > 24 ? '…' : ''}
+        </td>
+        <td>${escapeHtml(lead.niche || '—')}</td>
+        <td>${sourceBadge(lead.source)}</td>
+        <td>${escapeHtml(lead.country || '—')}</td>
+        <td style="font-size:12px">${contactInfo || '<span style="color:var(--text-muted)">—</span>'}</td>
+        <td>${scoreDots(lead.qualification_score || 0)}</td>
+        <td>${statusBadge(lead.status || 'New')}</td>
+        <td style="font-size:12px;color:var(--text-muted)">${formatDate(lead.created_at)}</td>
+        <td>
+          <button class="btn btn-outline btn-sm" onclick="openLead(${lead.id})">View</button>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+function renderPagination(page, pages, total) {
+  const el = $('pagination');
+  if (!el) return;
+
+  const start = Math.max(1, page - 2);
+  const end = Math.min(pages, page + 2);
+  let btns = '';
+
+  if (page > 1) btns += `<button class="page-btn" onclick="goPage(${page-1})">‹</button>`;
+  if (start > 1) btns += `<button class="page-btn" onclick="goPage(1)">1</button>${start > 2 ? '<span style="padding:0 4px;color:var(--text-muted)">…</span>' : ''}`;
+
+  for (let i = start; i <= end; i++) {
+    btns += `<button class="page-btn ${i === page ? 'active' : ''}" onclick="goPage(${i})">${i}</button>`;
+  }
+
+  if (end < pages) btns += `${end < pages - 1 ? '<span style="padding:0 4px;color:var(--text-muted)">…</span>' : ''}<button class="page-btn" onclick="goPage(${pages})">${pages}</button>`;
+  if (page < pages) btns += `<button class="page-btn" onclick="goPage(${page+1})">›</button>`;
+
+  const from = (page - 1) * 50 + 1;
+  const to = Math.min(page * 50, total);
+
+  el.innerHTML = `
+    <span class="pagination-info">Showing ${from}–${to} of ${total.toLocaleString()} leads</span>
+    <div class="pagination-controls">${btns}</div>
+  `;
+}
+
+function goPage(p) {
+  _currentPage = p;
+  loadLeads();
+  window.scrollTo(0, 0);
+}
+
+// ── Selection ────────────────────────────────────────────────────────────────
+
+function toggleSelectAll(checked) {
+  $$('#leads-tbody input[type=checkbox]').forEach(cb => {
+    const id = parseInt(cb.value);
+    if (checked) _selectedIds.add(id);
+    else _selectedIds.delete(id);
+    cb.checked = checked;
+  });
+  updateBulkBar();
+}
+
+function toggleSelect(id, checked) {
+  if (checked) _selectedIds.add(id);
+  else _selectedIds.delete(id);
+  updateBulkBar();
+}
+
+function clearSelection() {
+  _selectedIds.clear();
+  $$('input[type=checkbox]').forEach(cb => cb.checked = false);
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  const bar = $('bulk-bar');
+  const count = $('selected-count');
+  if (_selectedIds.size > 0) {
+    bar.style.display = 'flex';
+    count.textContent = `${_selectedIds.size} selected`;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+async function applyBulkStatus() {
+  const status = $('bulk-status-select').value;
+  if (!status || !_selectedIds.size) return;
+  try {
+    await apiFetch('/api/leads/bulk-status', {
+      method: 'POST',
+      body: JSON.stringify({ ids: [..._selectedIds], status }),
+    });
+    showToast(`Updated ${_selectedIds.size} leads to "${status}"`, 'success');
+    clearSelection();
+    loadLeads();
+  } catch(e) {
+    showToast('Bulk update failed: ' + e.message, 'error');
+  }
+}
+
+function exportSelected(e) {
+  e.preventDefault();
+  if (!_selectedIds.size) {
+    showToast('Select leads first', 'info');
+    return;
+  }
+  // Export all with current filters (simplest approach)
+  const params = new URLSearchParams({ status: $('filter-status')?.value || '' });
+  window.location.href = '/api/leads/export?' + params;
+}
+
+// ── Lead Modal ────────────────────────────────────────────────────────────────
+
+async function openLead(id) {
+  _editingLeadId = id;
+  try {
+    const lead = await apiFetch(`/api/leads/${id}`);
+    $('modal-name').textContent = lead.name || 'Lead Details';
+    $('modal-notes').value = lead.notes || '';
+    $('modal-status').value = lead.status || 'New';
+
+    const fields = [
+      ['Name', lead.name],
+      ['Email', lead.email ? `<a href="mailto:${escapeHtml(lead.email)}" class="td-link">${escapeHtml(lead.email)}</a>` : null],
+      ['Phone', lead.phone],
+      ['Website', lead.website ? `<a href="${escapeHtml(lead.website)}" target="_blank" class="td-link">${escapeHtml(lead.website)}</a>` : null],
+      ['Instagram', lead.instagram_handle ? `<a href="https://instagram.com/${escapeHtml(lead.instagram_handle)}" target="_blank" class="td-link">@${escapeHtml(lead.instagram_handle)}</a>` : null],
+      ['LinkedIn', lead.linkedin_url ? `<a href="${escapeHtml(lead.linkedin_url)}" target="_blank" class="td-link">View Profile</a>` : null],
+      ['Country', lead.country],
+      ['Location', lead.location],
+      ['Niche', lead.niche],
+      ['Source', sourceBadge(lead.source)],
+      ['Followers', lead.follower_count ? lead.follower_count.toLocaleString() : null],
+      ['Score', scoreDots(lead.qualification_score || 0)],
+      ['Found', formatDate(lead.created_at)],
+      ['High Ticket', lead.is_high_ticket ? '<span style="color:var(--green-accent)">✓ Yes</span>' : '<span style="color:var(--text-muted)">No</span>'],
+    ].filter(([,v]) => v != null && v !== '');
+
+    $('modal-grid').innerHTML = fields.map(([label, value]) => `
+      <div class="detail-field">
+        <label>${escapeHtml(label)}</label>
+        <div class="value">${value}</div>
+      </div>
+    `).join('');
+
+    if (lead.bio) {
+      $('modal-grid').innerHTML += `
+        <div class="detail-field" style="grid-column:1/-1">
+          <label>Bio / Description</label>
+          <div class="value" style="color:var(--text-secondary);font-size:12px;line-height:1.6">${escapeHtml(lead.bio)}</div>
+        </div>
+      `;
+    }
+
+    $('lead-modal').style.display = 'flex';
+  } catch(e) {
+    showToast('Failed to load lead: ' + e.message, 'error');
+  }
+}
+
+function closeModal(e) {
+  if (e.target === $('lead-modal')) {
+    $('lead-modal').style.display = 'none';
+  }
+}
+
+async function saveLeadChanges() {
+  if (!_editingLeadId) return;
+  try {
+    await apiFetch(`/api/leads/${_editingLeadId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        status: $('modal-status').value,
+        notes: $('modal-notes').value,
+      }),
+    });
+    showToast('Lead updated', 'success');
+    $('lead-modal').style.display = 'none';
+    loadLeads();
+  } catch(e) {
+    showToast('Save failed: ' + e.message, 'error');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadLeads);
+
+// Mark sorted column on load
+document.querySelector(`.sort-arrow[data-col="${_sortBy}"]`)?.parentElement?.classList.add('sorted');
+</script>
+{% endblock %}

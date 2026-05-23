@@ -1,0 +1,210 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard — Strove Leads{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Stat Cards -->
+<div class="stats-grid" id="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total Leads</div>
+    <div class="stat-value" id="stat-total">—</div>
+    <div class="stat-sub">in database</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Found Today</div>
+    <div class="stat-value" id="stat-today">—</div>
+    <div class="stat-sub">new leads</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">High Ticket</div>
+    <div class="stat-value" id="stat-highticket">—</div>
+    <div class="stat-sub">qualified leads</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Contacted</div>
+    <div class="stat-value" id="stat-contacted">—</div>
+    <div class="stat-sub">in outreach</div>
+  </div>
+</div>
+
+<!-- Scrape Control + Next Run -->
+<div class="dashboard-grid">
+  <!-- Scrape Control Card -->
+  <div class="card scrape-card">
+    <div class="card-title">Scrape Engine</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">
+      Run all sources simultaneously — Google, Directories, LinkedIn, Instagram
+    </p>
+
+    <div style="margin-bottom:16px">
+      <div class="stat-label">Next Scheduled Run</div>
+      <div class="countdown-timer" id="countdown-display">—</div>
+      <div class="stat-sub" id="next-run-abs">—</div>
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" id="start-scrape-btn" onclick="triggerScrape()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg>
+        Start Scrape Now
+      </button>
+      <a href="/leads" class="btn btn-outline">View Leads →</a>
+    </div>
+  </div>
+
+  <!-- Next Run / Status -->
+  <div class="card">
+    <div class="card-title">Scrape Log</div>
+    <div id="scrape-log-list">
+      <div style="color:var(--text-muted);font-size:13px">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Source Breakdown -->
+  <div class="card">
+    <div class="card-subtitle">Leads by Source</div>
+    <div class="breakdown-list" id="source-breakdown">
+      <div style="color:var(--text-muted);font-size:13px">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Country Breakdown -->
+  <div class="card">
+    <div class="card-subtitle">Leads by Country</div>
+    <div class="breakdown-list" id="country-breakdown">
+      <div style="color:var(--text-muted);font-size:13px">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Niche Breakdown -->
+  <div class="card">
+    <div class="card-subtitle">Leads by Niche</div>
+    <div class="breakdown-list" id="niche-breakdown">
+      <div style="color:var(--text-muted);font-size:13px">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Status Breakdown -->
+  <div class="card">
+    <div class="card-subtitle">Leads by Status</div>
+    <div class="breakdown-list" id="status-breakdown">
+      <div style="color:var(--text-muted);font-size:13px">Loading...</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function refreshDashboard() {
+  try {
+    const data = await apiFetch('/api/leads/stats');
+    renderStats(data);
+    renderBreakdown('source-breakdown', data.by_source);
+    renderBreakdown('country-breakdown', data.by_country);
+    renderBreakdown('niche-breakdown', data.by_niche);
+    renderBreakdown('status-breakdown', data.by_status);
+    renderScrapeLog();
+
+    // Countdown
+    if (data.last_scrape) {
+      // Calculate next run from scheduler
+      fetchNextRun();
+    }
+  } catch (e) {
+    console.error('Dashboard load error:', e);
+  }
+}
+
+async function fetchNextRun() {
+  // Get next run time from scrape logs or settings
+  try {
+    const logs = await apiFetch('/api/scrape/logs?limit=1');
+    if (logs && logs.length > 0 && logs[0].completed_at) {
+      $('next-run-abs').textContent = 'Last run: ' + formatDate(logs[0].completed_at);
+    }
+  } catch (e) {}
+}
+
+function renderStats(data) {
+  $('stat-total').textContent = (data.total_leads || 0).toLocaleString();
+  $('stat-today').textContent = (data.leads_today || 0).toLocaleString();
+  const htCount = Object.entries(data.by_status || {})
+    .filter(([k]) => k === 'New' || k === 'Contacted')
+    .reduce((s, [,v]) => s + v, 0);
+  $('stat-highticket').textContent = htCount.toLocaleString();
+  $('stat-contacted').textContent = ((data.by_status || {})['Contacted'] || 0).toLocaleString();
+}
+
+function renderBreakdown(elId, dataObj) {
+  const el = $(elId);
+  if (!el) return;
+
+  const entries = Object.entries(dataObj || {}).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  if (!entries.length) {
+    el.innerHTML = '<div style="color:var(--text-muted);font-size:13px">No data yet</div>';
+    return;
+  }
+
+  const max = entries[0][1];
+  el.innerHTML = entries.map(([label, count]) => `
+    <div class="breakdown-item">
+      <span class="breakdown-label">${escapeHtml(label)}</span>
+      <div class="breakdown-bar-track">
+        <div class="breakdown-bar" style="width:${Math.max(4, (count/max)*100)}%"></div>
+      </div>
+      <span class="breakdown-count">${count}</span>
+    </div>
+  `).join('');
+}
+
+async function renderScrapeLog() {
+  try {
+    const logs = await apiFetch('/api/scrape/logs?limit=5');
+    const el = $('scrape-log-list');
+    if (!logs.length) {
+      el.innerHTML = '<div style="color:var(--text-muted);font-size:13px">No scrapes run yet</div>';
+      return;
+    }
+    el.innerHTML = logs.map(log => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-subtle);gap:10px">
+        <div>
+          <div style="font-size:12px;color:var(--text-primary)">${formatDate(log.started_at)}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${log.leads_added || 0} new / ${log.leads_found || 0} found</div>
+        </div>
+        <span class="badge ${log.status === 'completed' ? 'badge-closed' : log.status === 'running' ? 'badge-new' : 'badge-disqualified'}" style="font-size:10px">${log.status}</span>
+      </div>
+    `).join('');
+  } catch(e) {}
+}
+
+async function triggerScrape() {
+  const btn = $('start-scrape-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Starting...';
+  }
+  try {
+    await apiFetch('/api/scrape/start', { method: 'POST', body: JSON.stringify({}) });
+    showToast('Scrape started — monitoring progress', 'success');
+    startStatusPolling();
+    setTimeout(() => {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg> Start Scrape Now';
+      }
+    }, 3000);
+  } catch(e) {
+    showToast('Failed to start: ' + e.message, 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg> Start Scrape Now';
+    }
+  }
+}
+
+// Override global refreshDashboard
+window.refreshDashboard = refreshDashboard;
+
+document.addEventListener('DOMContentLoaded', refreshDashboard);
+</script>
+{% endblock %}
